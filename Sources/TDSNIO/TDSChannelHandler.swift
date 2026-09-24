@@ -298,6 +298,7 @@ final class TDSChannelHandler: ChannelDuplexHandler {
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case TLSUserEvent.handshakeCompleted:
+            self.removePreloginTLSFraming(context: context)
             self.run(self.state.tlsEstablished(), with: context)
         default:
             context.fireUserInboundEventTriggered(event)
@@ -587,6 +588,17 @@ final class TDSChannelHandler: ChannelDuplexHandler {
         }
     }
 
+    /// Only the TLS handshake is carried inside PRELOGIN packets. Once it completes, TLS records
+    /// are written to the wire directly, so the framing handler must be removed before LOGIN7.
+    private func removePreloginTLSFraming(
+        context: ChannelHandlerContext
+    ) {
+        if let preloginTLSHandler = self.preloginTLSHandler {
+            _ = context.pipeline.syncOperations.removeHandler(preloginTLSHandler)
+            self.preloginTLSHandler = nil
+        }
+    }
+
     private func removeLoginOnlyTLS(
         context: ChannelHandlerContext
     ) {
@@ -594,10 +606,7 @@ final class TDSChannelHandler: ChannelDuplexHandler {
             _ = context.pipeline.syncOperations.removeHandler(sslHandler)
             self.sslHandler = nil
         }
-        if let preloginTLSHandler = self.preloginTLSHandler {
-            _ = context.pipeline.syncOperations.removeHandler(preloginTLSHandler)
-            self.preloginTLSHandler = nil
-        }
+        self.removePreloginTLSFraming(context: context)
     }
 }
 
