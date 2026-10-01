@@ -947,17 +947,27 @@ final class TDSTests {
     }
 
     static func guidTokenStreamPayload() -> ByteBuffer {
-        var payload = ByteBufferAllocator().buffer(capacity: 80)
+        var payload = ByteBufferAllocator().buffer(capacity: 96)
         payload.writeInteger(0x81 as UInt8)
-        payload.writeInteger(1 as UInt16, endianness: .little)
-        payload.writeColumnMetadata(type: .guid, name: "id")
+        payload.writeInteger(2 as UInt16, endianness: .little)
+        // GUIDTYPE is a BYTELEN_TYPE: its TYPE_INFO carries a 1-byte max length (16).
+        payload.writeInteger(0 as UInt32, endianness: .little)
+        payload.writeInteger(0 as UInt16, endianness: .little)
+        payload.writeInteger(TDSDataType.guid.rawValue)
+        payload.writeInteger(16 as UInt8)
+        payload.writeInteger(UInt8("id".utf16.count))
+        payload.writeUTF16("id")
+        // A column after the GUID catches a TYPE_INFO length mismatch.
+        payload.writeColumnMetadata(type: .int4, name: "after")
 
         payload.writeInteger(0xD1 as UInt8)
         payload.writeInteger(16 as UInt8)
         payload.writeGUID(Self.guid)
+        payload.writeInteger(7 as Int32, endianness: .little)
 
         payload.writeInteger(0xD1 as UInt8)
         payload.writeInteger(0 as UInt8)
+        payload.writeInteger(8 as Int32, endianness: .little)
 
         var done = Self.donePayload()
         payload.writeBuffer(&done)

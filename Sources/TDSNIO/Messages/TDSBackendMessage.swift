@@ -912,7 +912,7 @@ extension TDSBackendMessage {
         var xmlInfo: ColMetadata.XMLInfo?
 
         switch dataType {
-        case .intN, .bitN, .floatN, .moneyN, .datetimeN:
+        case .intN, .bitN, .floatN, .moneyN, .datetimeN, .guid:
             length = try buffer.readRequiredInteger(as: UInt8.self).asUInt64
         case .sqlVariant:
             length = try buffer.readRequiredInteger(endianness: .little, as: UInt32.self).asUInt64
@@ -953,7 +953,7 @@ extension TDSBackendMessage {
             length = info.maxByteSize.asUInt64
             udtInfo = info.udtInfo
         case .null, .int1, .bit, .int2, .int4, .int8, .float4, .float8, .money, .money4, .datetime,
-            .datetime4, .guid:
+            .datetime4:
             break
         }
 
