@@ -31,7 +31,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-crypto.git", "3.9.0"..<"5.0.0"),
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.3.0"),
         .package(url: "https://github.com/swift-server/swift-service-lifecycle.git", from: "2.6.0"),
-        .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.21.4"),
+        .package(url: "https://github.com/vapor/postgres-nio.git", from: "1.27.0"),
     ],
     targets: [
         .target(

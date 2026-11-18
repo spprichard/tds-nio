@@ -849,8 +849,8 @@ extension TDSTests {
             ))
 
         let result = try queryPromise.futureResult.wait()
-        expectEqual(result.columns.map(\.name), ["id"])
-        expectEqual(result.rows.map(\.values), [[.guid(Self.guid)], [.null]])
+        expectEqual(result.columns.map(\.name), ["id", "after"])
+        expectEqual(result.rows.map(\.values), [[.guid(Self.guid), .int32(7)], [.null, .int32(8)]])
         expectEqual(result.rows[0]["id"], .guid(Self.guid))
     }
 

@@ -137,7 +137,7 @@ public final class TDSClient: Sendable, Service {
                 "Trying to lease connection from `TDSClient`, but `TDSClient.run()` hasn't been called yet."
             )
         }
-        return try await self.pool.leaseConnection()
+        return try await self.pool.leaseConnection().connection
     }
 
     /// Returns the default `EventLoopGroup` singleton, automatically selecting the best for the platform.

@@ -2210,17 +2210,17 @@ extension TDSTests {
             Issue.record("Expected COLMETADATA")
             return
         }
-        expectEqual(metadata.columns.map(\.name), ["id"])
+        expectEqual(metadata.columns.map(\.name), ["id", "after"])
         guard case .row(let firstRow) = messages[1] else {
             Issue.record("Expected first ROW")
             return
         }
-        expectEqual(firstRow.values, [.guid(Self.guid)])
+        expectEqual(firstRow.values, [.guid(Self.guid), .int32(7)])
         guard case .row(let secondRow) = messages[2] else {
             Issue.record("Expected second ROW")
             return
         }
-        expectEqual(secondRow.values, [.null])
+        expectEqual(secondRow.values, [.null, .int32(8)])
         guard case .done = messages[3] else {
             Issue.record("Expected DONE")
             return
