@@ -82,6 +82,38 @@ struct TDSPartialDecodingError: Error {
         )
     }
 
+    static func unsupportedCodePage(
+        _ codePage: UInt16?,
+        collation: TDSCollation,
+        file: String = #fileID,
+        line: Int = #line
+    ) -> Self {
+        let bytes = collation.bytes.map { String($0, radix: 16, uppercase: true) }.joined(separator: " ")
+        let codePageDescription = codePage.map { "code page \($0)" } ?? "an unknown code page"
+        return TDSPartialDecodingError(
+            description: """
+                Cannot decode char/varchar/text: its collation [\(bytes)] is \(codePageDescription). \
+                TDSNIO decodes only UTF-8 and Windows-1252 text that is not plain ASCII. \
+                Cast the column to nvarchar, or use a _UTF8 or Latin1 collation.
+                """,
+            file: file,
+            line: line
+        )
+    }
+
+    static func invalidUTF8Text(
+        collation: TDSCollation,
+        file: String = #fileID,
+        line: Int = #line
+    ) -> Self {
+        let bytes = collation.bytes.map { String($0, radix: 16, uppercase: true) }.joined(separator: " ")
+        return TDSPartialDecodingError(
+            description: "Cannot decode char/varchar/text: invalid UTF-8 in a _UTF8 collation [\(bytes)].",
+            file: file,
+            line: line
+        )
+    }
+
     static func unsupportedRoutingProtocol(
         _ protocolByte: UInt8,
         file: String = #fileID,
