@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Foundation
 import NIOCore
 import NIOEmbedded
 import Testing
@@ -259,6 +260,31 @@ import Testing
         #expect(throws: TDSDecodingError.self) {
             try row.decode(column: "name", as: String?.self)
         }
+    }
+
+    /// A malformed message after a row must not put the row's bytes into the error, which
+    /// callers log.
+    @Test func aMessageDecodingErrorDoesNotContainRowBytes() throws {
+        let value: [UInt8] = Captured.joseCP1252 + Array("SECRET".utf8)
+        var payload = ByteBufferAllocator().buffer(capacity: 64)
+        payload.writeInteger(0x81 as UInt8)
+        payload.writeInteger(1 as UInt16, endianness: .little)
+        payload.writeVarCharColumn(name: "name", maxLength: 50, collation: Captured.sqlLatin1CP1CIAS)
+        payload.writeInteger(0xD1 as UInt8)
+        payload.writeInteger(UInt16(value.count), endianness: .little)
+        payload.writeBytes(value)
+        payload.writeInteger(0x01 as UInt8)  // not a token type
+        let payloadByteCount = payload.readableBytes
+
+        let error = #expect(throws: TDSMessageDecodingError.self) {
+            try Self.decode(payload)
+        }
+        let text = error.map { String(reflecting: $0) } ?? ""
+        let valueHex = value.map { String(format: "%02x", $0) }.joined(separator: " ")
+        #expect(!text.lowercased().contains(valueHex))
+        #expect(!text.lowercased().contains("53 45 43 52 45 54"))
+        #expect(!text.contains("SECRET"))
+        #expect(error?.payloadByteCount == 8 + payloadByteCount)  // packet header included
     }
 
     private static func decode(_ payload: ByteBuffer) throws -> [TDSBackendMessage] {
