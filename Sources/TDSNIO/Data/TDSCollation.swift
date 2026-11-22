@@ -102,11 +102,12 @@ extension TDSCollation {
     ///
     /// Supported: UTF-8 (`_UTF8` collations) and Windows-1252. Bytes below 0x80 mean the same
     /// in every code page SQL Server stores varchar in, so an all-ASCII value decodes whatever
-    /// the collation. Any other value in an unsupported, unknown or missing code page throws:
-    /// guessing would silently change the text.
-    func decodeString(_ bytes: [UInt8]) throws -> String {
+    /// the collation. Any other value in an unsupported, unknown or missing code page, and
+    /// invalid UTF-8, comes back as ``TDSData/undecodableText(_:)`` with its bytes: guessing
+    /// would silently change the text, and failing the message would close the connection.
+    func decodeText(_ bytes: [UInt8]) -> TDSData {
         if bytes.allSatisfy({ $0 < 0x80 }) {
-            return String(decoding: bytes, as: UTF8.self)
+            return .string(String(decoding: bytes, as: UTF8.self))
         }
         switch self.codePage {
         case Self.utf8CodePage:
@@ -114,13 +115,17 @@ extension TDSCollation {
             // SQL Server keeps. Decoding replaces invalid sequences, so compare to catch them.
             let string = String(decoding: bytes, as: UTF8.self)
             guard string.utf8.elementsEqual(bytes) else {
-                throw TDSPartialDecodingError.invalidUTF8Text(collation: self)
+                return .undecodableText(
+                    .init(bytes: bytes, collation: self.bytes, codePage: Self.utf8CodePage, reason: .invalidUTF8)
+                )
             }
-            return string
+            return .string(string)
         case 1252:
-            return String(decoding: bytes.map { Self.windows1252[Int($0)] }, as: UTF16.self)
+            return .string(String(decoding: bytes.map { Self.windows1252[Int($0)] }, as: UTF16.self))
         case let codePage:
-            throw TDSPartialDecodingError.unsupportedCodePage(codePage, collation: self)
+            return .undecodableText(
+                .init(bytes: bytes, collation: self.bytes, codePage: codePage, reason: .unsupportedCodePage)
+            )
         }
     }
 

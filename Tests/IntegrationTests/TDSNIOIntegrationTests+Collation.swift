@@ -49,16 +49,63 @@ extension TDSNIOIntegrationTests {
         }
     }
 
-    @Test func nonASCIIVarcharInAnUnsupportedCodePageFailsInsteadOfAlteringText() async throws {
-        // The failed decode closes the connection, so this does not use `withTDSConnection`.
-        let connection = try await TDSConnection.test(on: NIOSingletons.posixEventLoopGroup.next())
-        await #expect {
-            _ = try await connection.execute(
-                "SELECT CAST(N'日本' COLLATE Japanese_CI_AS AS varchar(20)) AS japanese"
-            )
-        } throws: { error in
-            String(reflecting: error).contains("code page 932")
+    /// Non-ASCII text in a code page TDSNIO does not decode is a per-value error: the row still
+    /// arrives, decoding the value as `String` throws, and the connection stays usable.
+    @Test func nonASCIIVarcharInAnUnsupportedCodePageIsAPerValueError() async throws {
+        try await withTDSConnection(on: NIOSingletons.posixEventLoopGroup.next()) { connection in
+            let rows = try await connection.execute(
+                """
+                SELECT
+                    CAST(N'Zażółć' COLLATE Polish_CI_AS AS varchar(20)) AS cp1250,
+                    CAST(N'Привет' COLLATE Cyrillic_General_CI_AS AS varchar(20)) AS cp1251,
+                    CAST(N'Γειά' COLLATE Greek_CI_AS AS varchar(20)) AS cp1253,
+                    CAST(N'日本' COLLATE Japanese_CI_AS AS varchar(20)) AS cp932,
+                    CAST(N'plain' COLLATE Greek_CI_AS AS varchar(20)) AS asciiInGreek
+                """
+            ).rows
+            expectEqual(rows.count, 1)
+            let row = rows[0]
+            for (column, codePage, bytes) in [
+                ("cp1250", 1250, [0x5A, 0x61, 0xBF, 0xF3, 0xB3, 0xE6]),
+                ("cp1251", 1251, [0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2]),
+                ("cp1253", 1253, [0xC3, 0xE5, 0xE9, 0xDC]),
+                ("cp932", 932, [0x93, 0xFA, 0x96, 0x7B]),
+            ] as [(String, UInt16, [UInt8])] {
+                guard case .undecodableText(let text) = row[column] else {
+                    Issue.record("\(column): expected .undecodableText, got \(String(describing: row[column]))")
+                    continue
+                }
+                expectEqual(text.codePage, codePage)
+                expectEqual(text.bytes, bytes)
+                let error = #expect(throws: TDSDecodingError.self) {
+                    try row.decode(column: column, as: String.self)
+                }
+                #expect(error?.columnName == column)
+                #expect(error.map { String(reflecting: $0) }?.contains("code page \(codePage)") == true)
+            }
+            expectEqual(try row.decode(column: "asciiInGreek", as: String.self), "plain")
+
+            // The same connection still works.
+            let one = try await connection.execute("SELECT 1 AS one").rows
+            expectEqual(try one[0].decode(column: "one", as: Int.self), 1)
         }
-        try? await connection.close()
+    }
+
+    /// Undecodable text sent back as a parameter goes in its own collation, so SQL Server converts
+    /// it without loss.
+    @Test func undecodableTextRoundTripsAsAParameter() async throws {
+        try await withTDSConnection(on: NIOSingletons.posixEventLoopGroup.next()) { connection in
+            let value = try await connection.execute(
+                "SELECT CAST(N'Zażółć' COLLATE Polish_CI_AS AS varchar(20)) AS v"
+            ).rows[0]["v"]
+            guard let value, case .undecodableText = value else {
+                Issue.record("expected .undecodableText, got \(String(describing: value))")
+                return
+            }
+            let rows = try await connection.execute(
+                "SELECT CAST(\(value) AS nvarchar(20)) AS asUnicode"
+            ).rows
+            expectEqual(try rows[0].decode(column: "asUnicode", as: String.self), "Zażółć")
+        }
     }
 }

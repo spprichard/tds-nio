@@ -418,6 +418,10 @@ extension TDSData {
             "uniqueidentifier"
         case .string:
             "nvarchar(max)"
+        case .undecodableText:
+            // Declared nvarchar, so SQL Server converts the value from its own collation without
+            // loss, whatever the database collation.
+            "nvarchar(max)"
         case .bytes:
             "varbinary(max)"
         case .xml:

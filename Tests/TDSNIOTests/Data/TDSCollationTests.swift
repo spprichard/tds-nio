@@ -86,7 +86,7 @@ import Testing
 
     @Test func utf8CollationsDecodeAsUTF8() throws {
         #expect(try TDSCollation(bytes: Captured.latin1UTF8).decodeString(Captured.joseUTF8) == "José")
-        #expect(throws: TDSPartialDecodingError.self) {
+        #expect(throws: TDSDecodingError.self) {
             try TDSCollation(bytes: Captured.latin1UTF8).decodeString(Captured.joseCP1252)
         }
     }
@@ -106,7 +106,7 @@ import Testing
         [0xFF, 0x41],  // byte never valid in UTF-8
     ])
     func invalidUTF8Throws(bytes: [UInt8]) {
-        #expect(throws: TDSPartialDecodingError.self) {
+        #expect(throws: TDSDecodingError.self) {
             try TDSCollation(bytes: Captured.latin1UTF8).decodeString(bytes)
         }
     }
@@ -118,18 +118,20 @@ import Testing
     }
 
     @Test func nonASCIIInAnUnsupportedCodePageThrowsAndNamesIt() {
-        let error = #expect(throws: TDSPartialDecodingError.self) {
+        let error = #expect(throws: TDSDecodingError.self) {
             try TDSCollation(bytes: Captured.japaneseCIAS).decodeString([0x82, 0xA0])
         }
-        #expect(error?.description.contains("code page 932") == true)
+        #expect(error?.undecodableText?.codePage == 932)
+        #expect(error?.undecodableText?.description.contains("code page 932") == true)
     }
 
     @Test func nonASCIIWithoutAKnownCollationThrows() {
         for collation in [[], [0x09, 0x04, 0xD0, 0x00, 0xFE] as [UInt8]] {
-            let error = #expect(throws: TDSPartialDecodingError.self) {
+            let error = #expect(throws: TDSDecodingError.self) {
                 try TDSCollation(bytes: collation).decodeString(Captured.joseCP1252)
             }
-            #expect(error?.description.contains("unknown code page") == true)
+            #expect(error?.undecodableText?.reason == .unsupportedCodePage)
+            #expect(error?.undecodableText?.description.contains("unknown code page") == true)
         }
     }
 
@@ -211,19 +213,52 @@ import Testing
         #expect(row.values == [.string("José")])
     }
 
-    @Test func anUnsupportedCodePageFailsTheDecodeInsteadOfAlteringText() throws {
+    /// The value comes back undecoded, with its bytes, instead of failing the message: a failed
+    /// message closes the connection.
+    @Test func anUnsupportedCodePageIsAPerValueResultNotAMessageFailure() throws {
         var payload = ByteBufferAllocator().buffer(capacity: 64)
         payload.writeInteger(0x81 as UInt8)
-        payload.writeInteger(1 as UInt16, endianness: .little)
+        payload.writeInteger(2 as UInt16, endianness: .little)
         payload.writeVarCharColumn(name: "name", maxLength: 50, collation: Captured.japaneseCIAS)
+        payload.writeVarCharColumn(name: "plain", maxLength: 50, collation: Captured.japaneseCIAS)
         payload.writeInteger(0xD1 as UInt8)
         payload.writeInteger(2 as UInt16, endianness: .little)
         payload.writeBytes([0x82, 0xA0])
+        payload.writeInteger(2 as UInt16, endianness: .little)
+        payload.writeBytes(Array("ok".utf8))
+        var done = TDSTests.donePayload()
+        payload.writeBuffer(&done)
 
-        let error = #expect(throws: TDSMessageDecodingError.self) {
-            try Self.decode(payload)
+        let messages = try Self.decode(payload)
+        guard case .row(let row) = messages[1] else {
+            Issue.record("Expected ROW, got \(messages)")
+            return
         }
-        #expect(error?.description.contains("code page 932") == true)
+        let expected = TDSUndecodableText(
+            bytes: [0x82, 0xA0], collation: Captured.japaneseCIAS, codePage: 932, reason: .unsupportedCodePage
+        )
+        #expect(row.values == [.undecodableText(expected), .string("ok")])
+    }
+
+    @Test func decodingUndecodableTextAsStringThrowsAndNamesTheCodePage() throws {
+        let text = TDSUndecodableText(
+            bytes: [0x82, 0xA0], collation: Captured.japaneseCIAS, codePage: 932, reason: .unsupportedCodePage
+        )
+        let row = TDSRow(
+            columns: [TDSColumn(name: "name", dataType: .bigVarChar)],
+            values: [.undecodableText(text)]
+        )
+        let error = #expect(throws: TDSDecodingError.self) {
+            try row.decode(column: "name", as: String.self)
+        }
+        #expect(error?.code == .undecodableText(text))
+        #expect(error?.columnName == "name")
+        #expect(text.description.contains("code page 932"))
+        #expect(try row.decode(column: "name", as: TDSData.self) == .undecodableText(text))
+        // Not mistaken for NULL.
+        #expect(throws: TDSDecodingError.self) {
+            try row.decode(column: "name", as: String?.self)
+        }
     }
 
     private static func decode(_ payload: ByteBuffer) throws -> [TDSBackendMessage] {
@@ -236,6 +271,19 @@ import Testing
             }
         }
         return messages
+    }
+}
+
+extension TDSCollation {
+    /// The decoded string; throws what `String.decode` throws for undecodable text.
+    fileprivate func decodeString(_ bytes: [UInt8]) throws -> String {
+        try String.decode(from: self.decodeText(bytes))
+    }
+}
+
+extension TDSDecodingError {
+    fileprivate var undecodableText: TDSUndecodableText? {
+        if case .undecodableText(let text) = self.code { text } else { nil }
     }
 }
 

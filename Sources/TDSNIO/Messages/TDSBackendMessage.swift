@@ -1151,12 +1151,12 @@ extension TDSBackendMessage {
             let length = Int(try buffer.readRequiredInteger(as: UInt8.self))
             if length == Int(UInt8.max) { return .null }
             let bytes = try buffer.readRequiredBytes(length: length)
-            return .string(try TDSCollation(bytes: typeInfo.collation).decodeString(bytes))
+            return TDSCollation(bytes: typeInfo.collation).decodeText(bytes)
         case .text:
             guard let bytes = try Self.decodeLegacyLOBBytes(from: &buffer) else {
                 return .null
             }
-            return .string(try TDSCollation(bytes: typeInfo.collation).decodeString(bytes))
+            return TDSCollation(bytes: typeInfo.collation).decodeText(bytes)
         case .nText:
             guard let bytes = try Self.decodeLegacyLOBBytes(from: &buffer) else {
                 return .null
@@ -1170,14 +1170,14 @@ extension TDSBackendMessage {
                 guard let bytes = try Self.decodePLPBytes(from: &buffer) else {
                     return .null
                 }
-                return .string(try TDSCollation(bytes: typeInfo.collation).decodeString(bytes))
+                return TDSCollation(bytes: typeInfo.collation).decodeText(bytes)
             }
             fallthrough
         case .bigChar:
             let length = Int(try buffer.readRequiredInteger(endianness: .little, as: UInt16.self))
             if length == Int(UInt16.max) { return .null }
             let bytes = try buffer.readRequiredBytes(length: length)
-            return .string(try TDSCollation(bytes: typeInfo.collation).decodeString(bytes))
+            return TDSCollation(bytes: typeInfo.collation).decodeText(bytes)
         case .nVarChar:
             if typeInfo.length == UInt64(UInt16.max) {
                 guard let bytes = try Self.decodePLPBytes(from: &buffer) else {
@@ -1396,7 +1396,7 @@ extension TDSBackendMessage {
         case .bigVarChar, .bigChar:
             // Properties are the collation (5 bytes), then the maximum length.
             let bytes = try value.readRequiredBytes(length: value.readableBytes)
-            return .string(try TDSCollation(bytes: Array(properties.prefix(5))).decodeString(bytes))
+            return TDSCollation(bytes: Array(properties.prefix(5))).decodeText(bytes)
         case .nVarChar, .nChar:
             guard
                 let string = String(

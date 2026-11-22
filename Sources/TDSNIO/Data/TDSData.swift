@@ -596,6 +596,9 @@ public enum TDSData: Sendable, Hashable {
     case datetimeOffset(TDSDateTimeOffset)
     case guid(TDSGUID)
     case string(String)
+    /// char, varchar or text that TDSNIO could not decode from its collation's code page. See
+    /// ``TDSUndecodableText``.
+    case undecodableText(TDSUndecodableText)
     case bytes([UInt8])
     case xml([UInt8])
     case json([UInt8])
