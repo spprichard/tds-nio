@@ -91,6 +91,26 @@ import Testing
         }
     }
 
+    /// SQL Server converts `EF BB BF 41` in a _UTF8 varchar to U+FEFF U+0041. Foundation's
+    /// `String(bytes:encoding: .utf8)` drops the U+FEFF.
+    @Test func utf8KeepsALeadingByteOrderMark() throws {
+        let decoded = try TDSCollation(bytes: Captured.latin1UTF8).decodeString([0xEF, 0xBB, 0xBF, 0x41])
+        #expect(decoded.unicodeScalars.map(\.value) == [0xFEFF, 0x41])
+    }
+
+    @Test(arguments: [
+        [0xC3] as [UInt8],  // truncated two-byte sequence
+        [0x41, 0xC3, 0x28],  // invalid continuation byte
+        [0xED, 0xA0, 0x80],  // encoded surrogate
+        [0xC0, 0xAF],  // overlong encoding
+        [0xFF, 0x41],  // byte never valid in UTF-8
+    ])
+    func invalidUTF8Throws(bytes: [UInt8]) {
+        #expect(throws: TDSPartialDecodingError.self) {
+            try TDSCollation(bytes: Captured.latin1UTF8).decodeString(bytes)
+        }
+    }
+
     @Test func asciiDecodesWhateverTheCollation() throws {
         for collation in [Captured.japaneseCIAS, Captured.sqlCP850Bin, []] {
             #expect(try TDSCollation(bytes: collation).decodeString(Array("Jose 42".utf8)) == "Jose 42")

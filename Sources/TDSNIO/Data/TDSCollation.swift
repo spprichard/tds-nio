@@ -12,8 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import Foundation
-
 /// The 5-byte collation in a char, varchar or text column's TYPE_INFO (MS-TDS 2.2.5.1.2), and
 /// the code page its bytes are in.
 ///
@@ -112,7 +110,10 @@ extension TDSCollation {
         }
         switch self.codePage {
         case Self.utf8CodePage:
-            guard let string = String(bytes: bytes, encoding: .utf8) else {
+            // Not `String(bytes:encoding: .utf8)`: Foundation drops a leading U+FEFF, which
+            // SQL Server keeps. Decoding replaces invalid sequences, so compare to catch them.
+            let string = String(decoding: bytes, as: UTF8.self)
+            guard string.utf8.elementsEqual(bytes) else {
                 throw TDSPartialDecodingError.invalidUTF8Text(collation: self)
             }
             return string
