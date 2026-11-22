@@ -1135,6 +1135,108 @@ struct LegacyDateTimeParameterCase: Sendable, CustomTestStringConvertible {
             expectedServerText: "9999-12-31T23:59:59.997",
             expected: .legacy(9999, 12, 31, 23, 59, 59, nanosecond: 996_666_666)
         ),
+        // 37.5 ticks rounds half up to 38.
+        .init(
+            input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 125_000_000),
+            expectedServerText: "2019-06-30T23:59:59.127",
+            expected: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 126_666_666)
+        ),
+        // 0.6 ticks rounds to 1.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 2_000_000),
+            expectedServerText: "2019-06-30T00:00:00.003",
+            expected: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 3_333_333)
+        ),
+        // 0.49998 ticks rounds to 0.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 1_666_600),
+            expectedServerText: "2019-06-30T00:00:00",
+            expected: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 0)
+        ),
+        // 0.50001 ticks rounds to 1.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 1_666_700),
+            expectedServerText: "2019-06-30T00:00:00.003",
+            expected: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 3_333_333)
+        ),
+        // 1.49997 ticks rounds to 1.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 4_999_900),
+            expectedServerText: "2019-06-30T00:00:00.003",
+            expected: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 3_333_333)
+        ),
+        // 1.5 ticks rounds half up to 2.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 5_000_000),
+            expectedServerText: "2019-06-30T00:00:00.007",
+            expected: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 6_666_666)
+        ),
+        // 4.5 ticks rounds half up to 5, not to even 4.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 15_000_000),
+            expectedServerText: "2019-06-30T00:00:00.017",
+            expected: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 16_666_666)
+        ),
+        // 299.4 ticks rounds to 299.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 998_000_000),
+            expectedServerText: "2019-06-30T00:00:00.997",
+            expected: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 996_666_666)
+        ),
+        // 299.7 ticks carries into the next second.
+        .init(
+            input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 999_000_000),
+            expectedServerText: "2019-06-30T00:00:01",
+            expected: .legacy(2019, 6, 30, 0, 0, 1, nanosecond: 0)
+        ),
+        // The last tick of the day.
+        .init(
+            input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 998_000_000),
+            expectedServerText: "2019-06-30T23:59:59.997",
+            expected: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 996_666_666)
+        ),
+        // Carries into the next day.
+        .init(
+            input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 999_000_000),
+            expectedServerText: "2019-07-01T00:00:00",
+            expected: .legacy(2019, 7, 1, 0, 0, 0, nanosecond: 0)
+        ),
+        // Carries into the next year.
+        .init(
+            input: .legacy(2019, 12, 31, 23, 59, 59, nanosecond: 999_000_000),
+            expectedServerText: "2020-01-01T00:00:00",
+            expected: .legacy(2020, 1, 1, 0, 0, 0, nanosecond: 0)
+        ),
+        // Carries into a leap day.
+        .init(
+            input: .legacy(2020, 2, 28, 23, 59, 59, nanosecond: 999_000_000),
+            expectedServerText: "2020-02-29T00:00:00",
+            expected: .legacy(2020, 2, 29, 0, 0, 0, nanosecond: 0)
+        ),
+        // Carries past February in a common year.
+        .init(
+            input: .legacy(2019, 2, 28, 23, 59, 59, nanosecond: 999_000_000),
+            expectedServerText: "2019-03-01T00:00:00",
+            expected: .legacy(2019, 3, 1, 0, 0, 0, nanosecond: 0)
+        ),
+        // Carries into the smallest datetime.
+        .init(
+            input: .legacy(1752, 12, 31, 23, 59, 59, nanosecond: 999_000_000),
+            expectedServerText: "1753-01-01T00:00:00",
+            expected: .legacy(1753, 1, 1, 0, 0, 0, nanosecond: 0)
+        ),
+        // Clamps to the largest datetime, as SQL Server does.
+        .init(
+            input: .legacy(9999, 12, 31, 23, 59, 59, nanosecond: 999_000_000),
+            expectedServerText: "9999-12-31T23:59:59.997",
+            expected: .legacy(9999, 12, 31, 23, 59, 59, nanosecond: 996_666_666)
+        ),
+        // A value decoded from tick 38 goes back as tick 38.
+        .init(
+            input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 126_666_666),
+            expectedServerText: "2019-06-30T23:59:59.127",
+            expected: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 126_666_666)
+        ),
     ]
 }
 

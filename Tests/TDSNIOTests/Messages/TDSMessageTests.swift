@@ -2764,6 +2764,54 @@ struct EncodedLegacyDateTimeCase: Sendable, CustomTestStringConvertible {
             days: 2_958_463,
             ticks: 25_919_999
         ),
+        // 37.5 ticks rounds half up to 38 (.127): 0x0000AA7C_018B80FA
+        .init(input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 125_000_000), days: 43_644, ticks: 25_919_738),
+        // 0.6 ticks rounds to 1 (.003): 0x0000AA7C_00000001
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 2_000_000), days: 43_644, ticks: 1),
+        // 0.49998 ticks rounds to 0: 0x0000AA7C_00000000
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 1_666_600), days: 43_644, ticks: 0),
+        // 0.50001 ticks rounds to 1: 0x0000AA7C_00000001
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 1_666_700), days: 43_644, ticks: 1),
+        // 1.49997 ticks rounds to 1, not via .005 to 2: 0x0000AA7C_00000001
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 4_999_900), days: 43_644, ticks: 1),
+        // 1.5 ticks rounds half up to 2 (.007): 0x0000AA7C_00000002
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 5_000_000), days: 43_644, ticks: 2),
+        // 4.5 ticks rounds half up to 5 (.017), not to even 4: 0x0000AA7C_00000005
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 15_000_000), days: 43_644, ticks: 5),
+        // 7.5 ticks rounds half up to 8 (.027): 0x0000AA7C_00000008
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 25_000_000), days: 43_644, ticks: 8),
+        // 10.5 ticks rounds half up to 11 (.037): 0x0000AA7C_0000000B
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 35_000_000), days: 43_644, ticks: 11),
+        // 299.4 ticks rounds to 299 (.997): 0x0000AA7C_0000012B
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 998_000_000), days: 43_644, ticks: 299),
+        // 299.49999 ticks rounds to 299: 0x0000AA7C_0000012B
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 998_333_300), days: 43_644, ticks: 299),
+        // 299.50002 ticks carries into the next second: 0x0000AA7C_0000012C
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 998_333_400), days: 43_644, ticks: 300),
+        // 299.7 ticks carries into the next second: 0x0000AA7C_0000012C
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 999_000_000), days: 43_644, ticks: 300),
+        // The last tick of the day (.997): 0x0000AA7C_018B81FF
+        .init(input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 998_000_000), days: 43_644, ticks: 25_919_999),
+        // Carries into the next day: 0x0000AA7D_00000000
+        .init(input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 998_333_400), days: 43_645, ticks: 0),
+        // Carries into the next day, 2019-07-01: 0x0000AA7D_00000000
+        .init(input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 999_000_000), days: 43_645, ticks: 0),
+        // Carries into the next year, 2020-01-01: 0x0000AB35_00000000
+        .init(input: .legacy(2019, 12, 31, 23, 59, 59, nanosecond: 999_000_000), days: 43_829, ticks: 0),
+        // Carries into a leap day, 2020-02-29: 0x0000AB70_00000000
+        .init(input: .legacy(2020, 2, 28, 23, 59, 59, nanosecond: 999_000_000), days: 43_888, ticks: 0),
+        // Carries past February in a common year, 2019-03-01: 0x0000AA03_00000000
+        .init(input: .legacy(2019, 2, 28, 23, 59, 59, nanosecond: 999_000_000), days: 43_523, ticks: 0),
+        // Carries into the smallest datetime, 1753-01-01: 0xFFFF2E46_00000000
+        .init(input: .legacy(1752, 12, 31, 23, 59, 59, nanosecond: 999_000_000), days: -53_690, ticks: 0),
+        // Rounds down to the largest datetime: 0x002D247F_018B81FF
+        .init(input: .legacy(9999, 12, 31, 23, 59, 59, nanosecond: 998_000_000), days: 2_958_463, ticks: 25_919_999),
+        // Would carry past 9999-12-31; clamps to the largest datetime: 0x002D247F_018B81FF
+        .init(input: .legacy(9999, 12, 31, 23, 59, 59, nanosecond: 999_000_000), days: 2_958_463, ticks: 25_919_999),
+        // Clamps to the largest datetime: 0x002D247F_018B81FF
+        .init(input: .legacy(9999, 12, 31, 23, 59, 59, nanosecond: 999_999_999), days: 2_958_463, ticks: 25_919_999),
+        // A value decoded from tick 38 encodes back to tick 38, not 37
+        .init(input: .legacy(2019, 6, 30, 23, 59, 59, nanosecond: 126_666_666), days: 43_644, ticks: 25_919_738),
     ]
 }
 
