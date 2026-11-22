@@ -46,7 +46,10 @@ public struct TDSUndecodableText: Sendable, Hashable, CustomStringConvertible, C
     }
 
     public var description: String {
-        let collation = self.collation.map { String($0, radix: 16, uppercase: true) }.joined(separator: " ")
+        let collation = self.collation.map { byte in
+            let hex = String(byte, radix: 16, uppercase: true)
+            return byte < 0x10 ? "0" + hex : hex
+        }.joined(separator: " ")
         switch self.reason {
         case .invalidUTF8:
             return "Cannot decode char/varchar/text (\(self.bytes.count) bytes): "

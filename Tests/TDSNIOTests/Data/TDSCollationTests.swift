@@ -262,6 +262,31 @@ import Testing
         }
     }
 
+    @Test func errorTextZeroPadsTheCollationBytes() {
+        let unsupported = TDSUndecodableText(
+            bytes: [0xBF], collation: [0x15, 0x04, 0xD0, 0x00, 0x00], codePage: 1250, reason: .unsupportedCodePage
+        )
+        #expect(unsupported.description.contains("[15 04 D0 00 00]"))
+        let invalid = TDSUndecodableText(
+            bytes: [0xC3], collation: Captured.latin1UTF8, codePage: 65001, reason: .invalidUTF8
+        )
+        #expect(invalid.description.contains("[09 04 D0 24 00]"))
+    }
+
+    @Test func errorTextGivesTheByteCountButNotTheBytes() {
+        let text = TDSUndecodableText(
+            // "Zażółć" in code page 1250, as SQL Server sends it.
+            bytes: [0x5A, 0x61, 0xBF, 0xF3, 0xB3, 0xE6], collation: [0x15, 0x04, 0xD0, 0x00, 0x00], codePage: 1250,
+            reason: .unsupportedCodePage
+        )
+        for rendered in [text.description, String(reflecting: text), String(reflecting: TDSData.undecodableText(text))] {
+            #expect(rendered.contains("6 bytes"))
+            #expect(!rendered.lowercased().contains("bf f3"))
+            #expect(!rendered.lowercased().contains("bff3"))
+            #expect(!rendered.contains("191"))  // 0xBF in decimal, as an array of UInt8 would print
+        }
+    }
+
     /// A malformed message after a row must not put the row's bytes into the error, which
     /// callers log.
     @Test func aMessageDecodingErrorDoesNotContainRowBytes() throws {
