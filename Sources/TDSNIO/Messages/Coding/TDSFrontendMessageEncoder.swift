@@ -734,7 +734,10 @@ struct TDSFrontendMessageEncoder {
             self.writeDate(utcDateTime.date)
             self.buffer.writeInteger(Int16(value.offsetMinutes), endianness: .little)
         case .datetime(let value):
+            // TYPE_INFO is the type and its maximum length; the value is then
+            // prefixed with its actual length, as for every other xxxN type.
             self.buffer.writeInteger(TDSDataType.datetimeN.rawValue)
+            self.buffer.writeInteger(8 as UInt8)
             self.buffer.writeInteger(8 as UInt8)
             let days =
                 Self.daysSince0001(

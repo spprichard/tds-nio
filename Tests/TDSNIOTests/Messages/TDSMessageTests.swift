@@ -827,6 +827,35 @@ extension TDSTests {
             ])
     }
 
+    @Test(arguments: EncodedLegacyDateTimeCase.all)
+    func rpcPacketEncodesDateTimeParameter(_ testCase: EncodedLegacyDateTimeCase) throws {
+        var encoder = TDSFrontendMessageEncoder(
+            buffer: ByteBufferAllocator().buffer(capacity: 256)
+        )
+        encoder.rpc(
+            .init(
+                procedure: "dbo.datetime",
+                parameters: [
+                    .init(name: "@at", value: .datetime(testCase.input))
+                ]
+            ))
+
+        var packet = encoder.flush()
+        packet.moveReaderIndex(forwardBy: TDSPacket.headerLength + 22 + 2 + "dbo.datetime".utf16.count * 2 + 2)
+
+        expectEqual(packet.readInteger(as: UInt8.self), 3)
+        expectEqual(packet.readUTF16(characterCount: 3), "@at")
+        expectEqual(packet.readInteger(as: UInt8.self), 0)
+        // TYPE_INFO: datetimeN and its maximum length.
+        expectEqual(packet.readInteger(as: UInt8.self), TDSDataType.datetimeN.rawValue)
+        expectEqual(packet.readInteger(as: UInt8.self), 8)
+        // The value: its actual length, then days since 1900-01-01 and 1/300 s ticks since midnight.
+        expectEqual(packet.readInteger(as: UInt8.self), 8)
+        expectEqual(packet.readInteger(endianness: .little, as: Int32.self), testCase.days)
+        expectEqual(packet.readInteger(endianness: .little, as: UInt32.self), testCase.ticks)
+        expectEqual(packet.readableBytes, 0)
+    }
+
     @Test func rpcPacketEncodesXMLParameter() throws {
         var encoder = TDSFrontendMessageEncoder(
             buffer: ByteBufferAllocator().buffer(capacity: 256)
@@ -2700,5 +2729,57 @@ extension TDSTests {
             let valueLength = packet.readInteger(endianness: .little, as: UInt16.self) ?? 0
             _ = packet.readBytes(length: Int(valueLength))
         }
+    }
+}
+
+/// A non-NULL `datetime` RPC parameter and the days and ticks it must encode to.
+///
+/// The expected values are SQL Server's own: the bytes of
+/// `CAST(CAST(CAST('<input>' AS datetime2(7)) AS datetime) AS binary(8))`.
+struct EncodedLegacyDateTimeCase: Sendable, CustomTestStringConvertible {
+    var input: TDSDateTime
+    var days: Int32
+    var ticks: UInt32
+
+    var testDescription: String {
+        let date = self.input.date
+        let time = self.input.time
+        return String(
+            format: "%04d-%02d-%02dT%02d:%02d:%02d.%09d -> days %d, ticks %u",
+            date.year, date.month, date.day, time.hour, time.minute, time.second, time.nanosecond,
+            self.days, self.ticks
+        )
+    }
+
+    static let all: [Self] = [
+        // 0x0000AA7C_00000000
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 0), days: 43_644, ticks: 0),
+        // .001 s is 0.3 ticks: 0x0000AA7C_00000000
+        .init(input: .legacy(2019, 6, 30, 0, 0, 0, nanosecond: 1_000_000), days: 43_644, ticks: 0),
+        // The smallest datetime: 0xFFFF2E46_00000000
+        .init(input: .legacy(1753, 1, 1, 0, 0, 0, nanosecond: 0), days: -53_690, ticks: 0),
+        // The largest datetime: 0x002D247F_018B81FF
+        .init(
+            input: .legacy(9999, 12, 31, 23, 59, 59, nanosecond: 997_000_000),
+            days: 2_958_463,
+            ticks: 25_919_999
+        ),
+    ]
+}
+
+extension TDSDateTime {
+    fileprivate static func legacy(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        _ hour: Int,
+        _ minute: Int,
+        _ second: Int,
+        nanosecond: Int
+    ) -> TDSDateTime {
+        TDSDateTime(
+            date: TDSDate(year: year, month: month, day: day),
+            time: TDSTime(hour: hour, minute: minute, second: second, nanosecond: nanosecond, scale: 3)
+        )
     }
 }
