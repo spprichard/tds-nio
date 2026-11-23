@@ -19,8 +19,9 @@ struct TDSMessageDecodingError: Error {
     /// The backend message packet ID byte.
     let packetID: UInt8
 
-    /// The backend message's payload encoded in base64.
-    let payload: String
+    /// The size of the backend message, packet header included. The bytes themselves are left
+    /// out: they can hold row values, and this error ends up in logs.
+    let payloadByteCount: Int
 
     /// A textual description of the error.
     let description: String
@@ -36,11 +37,9 @@ struct TDSMessageDecodingError: Error {
         packetID: UInt8,
         messageBytes: ByteBuffer
     ) -> Self {
-        let data = messageBytes.hexDump(format: .plain)
-
-        return TDSMessageDecodingError(
+        TDSMessageDecodingError(
             packetID: packetID,
-            payload: data,
+            payloadByteCount: messageBytes.readableBytes,
             description: partialError.description,
             file: partialError.file,
             line: partialError.line
@@ -56,7 +55,7 @@ struct TDSMessageDecodingError: Error {
     ) -> Self {
         return TDSMessageDecodingError(
             packetID: packetID,
-            payload: messageBytes.hexDump(format: .plain),
+            payloadByteCount: messageBytes.readableBytes,
             description: """
                 Received a message with packetID '\(packetID)'. There is no \
                 packet type associated with this packet identifier.

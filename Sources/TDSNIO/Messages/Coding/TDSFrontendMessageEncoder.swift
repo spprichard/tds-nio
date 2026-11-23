@@ -765,6 +765,20 @@ struct TDSFrontendMessageEncoder {
             self.buffer.writeBytes(self.databaseCollation)
             self.buffer.writeInteger(byteLength, endianness: .little)
             self.buffer.writeBytes(bytes)
+        case .undecodableText(let value):
+            // Send the bytes back in their own collation, so SQL Server converts them, not TDSNIO.
+            let collation = value.collation.count == 5 ? value.collation : self.databaseCollation
+            self.buffer.writeInteger(TDSDataType.bigVarChar.rawValue)
+            if value.bytes.count > 8_000 {
+                self.buffer.writeInteger(UInt16.max, endianness: .little)
+                self.buffer.writeBytes(collation)
+                self.writePLPBytes(value.bytes)
+                return
+            }
+            self.buffer.writeInteger(UInt16(max(value.bytes.count, 1)), endianness: .little)
+            self.buffer.writeBytes(collation)
+            self.buffer.writeInteger(UInt16(value.bytes.count), endianness: .little)
+            self.buffer.writeBytes(value.bytes)
         case .bytes(let value):
             self.buffer.writeInteger(TDSDataType.bigVarBin.rawValue)
             if value.count > 8_000 {

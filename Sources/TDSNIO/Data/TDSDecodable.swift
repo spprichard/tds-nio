@@ -23,6 +23,8 @@ public struct TDSDecodingError: Error, Sendable, Equatable {
         case nullValue
         case typeMismatch(expected: String, actual: TDSData)
         case valueOutOfRange(expected: String, actual: TDSData)
+        /// A char, varchar or text value that TDSNIO could not decode from its code page.
+        case undecodableText(TDSUndecodableText)
     }
 
     public var code: Code
@@ -312,6 +314,8 @@ extension String: TDSDecodable {
             return string
         case .guid(let guid):
             return guid.stringValue
+        case .undecodableText(let text):
+            throw TDSDecodingError(code: .undecodableText(text))
         case .null, .typedNull:
             throw TDSDecodingError.nullValue(expected: "String")
         default:
