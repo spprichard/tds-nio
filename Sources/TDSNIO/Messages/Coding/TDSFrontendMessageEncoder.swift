@@ -734,18 +734,14 @@ struct TDSFrontendMessageEncoder {
             self.writeDate(utcDateTime.date)
             self.buffer.writeInteger(Int16(value.offsetMinutes), endianness: .little)
         case .datetime(let value):
+            // TYPE_INFO is the type and its maximum length; the value is then
+            // prefixed with its actual length, as for every other xxxN type.
             self.buffer.writeInteger(TDSDataType.datetimeN.rawValue)
             self.buffer.writeInteger(8 as UInt8)
-            let days =
-                Self.daysSince0001(
-                    year: value.date.year,
-                    month: value.date.month,
-                    day: value.date.day
-                ) - Self.daysBeforeYear(1900)
-            self.buffer.writeInteger(Int32(days), endianness: .little)
-            let seconds = value.time.hour * 3600 + value.time.minute * 60 + value.time.second
-            let ticks = seconds * 300 + value.time.nanosecond * 300 / 1_000_000_000
-            self.buffer.writeInteger(UInt32(ticks), endianness: .little)
+            self.buffer.writeInteger(8 as UInt8)
+            let (days, ticks) = Self.legacyDateTimeDaysAndTicks(value)
+            self.buffer.writeInteger(days, endianness: .little)
+            self.buffer.writeInteger(ticks, endianness: .little)
         case .guid(let value):
             self.buffer.writeInteger(TDSDataType.guid.rawValue)
             self.buffer.writeInteger(16 as UInt8)
@@ -1097,6 +1093,47 @@ struct TDSFrontendMessageEncoder {
         let fractionalPart = Int64(paddedFractionalText) ?? 0
         let scaled = integerPart * Int64(Self.powerOf10(scale)) + fractionalPart
         return isNegative ? -scaled : scaled
+    }
+
+    /// Converts a date and time to the legacy `datetime` representation: days since
+    /// 1900-01-01, and 1/300 s ticks since midnight.
+    ///
+    /// The time is rounded to the nearest tick, halves up, from full nanosecond precision.
+    /// That is what SQL Server does converting `datetime2` to `datetime`, and what .NET's
+    /// `SqlDateTime` does to the `datetime` parameters SqlClient sends. For example,
+    /// .002 s (0.6 ticks) becomes 1 tick (.003), .125 s (37.5 ticks) becomes 38 (.127),
+    /// .015 s (4.5 ticks) becomes 5 (.017), and .998 s (299.4 ticks) becomes 299 (.997).
+    /// Truncating instead would also turn a value decoded from a `datetime` column, such as
+    /// .126666666 s (38 ticks), into a different one (37 ticks) when it is sent back.
+    ///
+    /// A time that rounds up to a whole second carries into it, and one that rounds up past
+    /// 23:59:59.997 carries into 00:00:00 of the next day; the day is a plain count, so month,
+    /// year and leap-day boundaries follow from it. At the very end of the range SQL Server
+    /// clamps instead of overflowing: 9999-12-31 23:59:59.998 and later become
+    /// 9999-12-31 23:59:59.997, the largest `datetime`. This does the same.
+    private static func legacyDateTimeDaysAndTicks(_ value: TDSDateTime) -> (days: Int32, ticks: UInt32) {
+        let nanosecondsPerSecond = 1_000_000_000
+        let ticksPerSecond = 300
+        let ticksPerDay = 86_400 * ticksPerSecond
+        let maximumDays = 2_958_463  // 9999-12-31
+
+        let dateDays =
+            Self.daysSince0001(
+                year: value.date.year,
+                month: value.date.month,
+                day: value.date.day
+            ) - Self.daysBeforeYear(1900)
+        let seconds = value.time.hour * 3600 + value.time.minute * 60 + value.time.second
+        let nanoseconds = seconds * nanosecondsPerSecond + value.time.nanosecond
+        let roundedTicks = (nanoseconds * ticksPerSecond + nanosecondsPerSecond / 2) / nanosecondsPerSecond
+
+        var days = dateDays + roundedTicks / ticksPerDay
+        var ticks = roundedTicks % ticksPerDay
+        if dateDays <= maximumDays && days > maximumDays {
+            days = maximumDays
+            ticks = ticksPerDay - 1
+        }
+        return (Int32(days), UInt32(ticks))
     }
 
     private mutating func writeDate(_ date: TDSDate) {
